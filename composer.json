@@ -1,7 +1,7 @@
 {
     "name": "doctrine/mongodb-odm",
     "replace" : {
-        "doctrine/mongodb-odm" : "1.2.5"
+        "doctrine/mongodb-odm" : "^1.0"
     },
     "type": "library",
     "description": "Doctrine MongoDB Object Document Mapper",
