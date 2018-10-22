@@ -1,7 +1,7 @@
 {
-    "name": "doctrine/mongodb-odm",
+    "name": "watari/mongodb-odm",
     "replace" : {
-        "doctrine/mongodb-odm" : "^1.0"
+        "doctrine/mongodb-odm" : "1.*"
     },
     "type": "library",
     "description": "Doctrine MongoDB Object Document Mapper",
