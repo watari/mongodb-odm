@@ -700,23 +700,30 @@ class DocumentPersister
         $embeddedDocuments = $collection->getMongoData();
         $mapping = $collection->getMapping();
         $owner = $collection->getOwner();
+        $hits = $collection->getHints();
+        $isReadOnly = isset($hits[Query::HINT_READ_ONLY]);
+        $isHash = CollectionHelper::isHash($mapping['strategy']);
         if ($embeddedDocuments) {
+            $medatadaMap = [];
             foreach ($embeddedDocuments as $key => $embeddedDocument) {
                 $className = $this->uow->getClassNameForAssociation($mapping, $embeddedDocument);
-                $embeddedMetadata = $this->dm->getClassMetadata($className);
+                if(!isset($medatadaMap[$className])) {
+                    $medatadaMap[$className] = $this->dm->getClassMetadata($className);
+                }
+                $embeddedMetadata = $medatadaMap[$className];
                 $embeddedDocumentObject = $embeddedMetadata->newInstance();
 
                 $this->uow->setParentAssociation($embeddedDocumentObject, $mapping, $owner, $mapping['name'] . '.' . $key);
 
-                $data = $this->hydratorFactory->hydrate($embeddedDocumentObject, $embeddedDocument, $collection->getHints());
+                $data = $this->hydratorFactory->hydrate($embeddedDocumentObject, $embeddedDocument, $hits);
                 $id = $embeddedMetadata->identifier && isset($data[$embeddedMetadata->identifier])
                     ? $data[$embeddedMetadata->identifier]
                     : null;
 
-                if (empty($collection->getHints()[Query::HINT_READ_ONLY])) {
+                if (!$isReadOnly) {
                     $this->uow->registerManaged($embeddedDocumentObject, $id, $data);
                 }
-                if (CollectionHelper::isHash($mapping['strategy'])) {
+                if ($isHash) {
                     $collection->set($key, $embeddedDocumentObject);
                 } else {
                     $collection->add($embeddedDocumentObject);
