@@ -87,6 +87,8 @@ class HydratorFactory
      */
     private $hydrators = array();
 
+    private $metadataCache = [];
+
     /**
      * @param DocumentManager $dm
      * @param EventManager $evm
@@ -215,7 +217,7 @@ EOF
         if (isset(\$data['%1\$s'])) {
             \$value = \$data['%1\$s'];
             %3\$s
-            \$this->class->reflFields['%2\$s']->setValue(\$document, clone \$return);
+            \$reflFields['%2\$s']->setValue(\$document, clone \$return);
             \$hydratedData['%2\$s'] = \$return;
         }
 
@@ -231,15 +233,15 @@ EOF
                 $code .= sprintf(<<<EOF
 
         /** @Field(type="{$mapping['type']}") */
-        if (isset(\$data['%1\$s']) || (! empty(\$this->class->fieldMappings['%2\$s']['nullable']) && array_key_exists('%1\$s', \$data))) {
+        if (isset(\$data['%1\$s']) || (! empty(\$fieldMappings['%2\$s']['nullable']) && array_key_exists('%1\$s', \$data))) {
             \$value = \$data['%1\$s'];
             if (\$value !== null) {
-                \$typeIdentifier = \$this->class->fieldMappings['%2\$s']['type'];
+                \$typeIdentifier = \$fieldMappings['%2\$s']['type'];
                 %3\$s
             } else {
                 \$return = null;
             }
-            \$this->class->reflFields['%2\$s']->setValue(\$document, \$return);
+            \$reflFields['%2\$s']->setValue(\$document, \$return);
             \$hydratedData['%2\$s'] = \$return;
         }
 
@@ -255,12 +257,12 @@ EOF
         /** @ReferenceOne */
         if (isset(\$data['%1\$s'])) {
             \$reference = \$data['%1\$s'];
-            \$className = \$this->unitOfWork->getClassNameForAssociation(\$this->class->fieldMappings['%2\$s'], \$reference);
-            \$mongoId = ClassMetadataInfo::getReferenceId(\$reference, \$this->class->fieldMappings['%2\$s']['storeAs']);
+            \$className = \$this->unitOfWork->getClassNameForAssociation(\$fieldMappings['%2\$s'], \$reference);
+            \$mongoId = ClassMetadataInfo::getReferenceId(\$reference, \$fieldMappings['%2\$s']['storeAs']);
             \$targetMetadata = \$this->dm->getClassMetadata(\$className);
             \$id = \$targetMetadata->getPHPIdentifierValue(\$mongoId);
             \$return = \$this->dm->getReference(\$className, \$id);
-            \$this->class->reflFields['%2\$s']->setValue(\$document, \$return);
+            \$reflFields['%2\$s']->setValue(\$document, \$return);
             \$hydratedData['%2\$s'] = \$return;
         }
 
@@ -273,9 +275,9 @@ EOF
                 if (isset($mapping['repositoryMethod']) && $mapping['repositoryMethod']) {
                     $code .= sprintf(<<<EOF
 
-        \$className = \$this->class->fieldMappings['%2\$s']['targetDocument'];
+        \$className = \$fieldMappings['%2\$s']['targetDocument'];
         \$return = \$this->dm->getRepository(\$className)->%3\$s(\$document);
-        \$this->class->reflFields['%2\$s']->setValue(\$document, \$return);
+        \$reflFields['%2\$s']->setValue(\$document, \$return);
         \$hydratedData['%2\$s'] = \$return;
 
 EOF
@@ -287,18 +289,18 @@ EOF
                 } else {
                     $code .= sprintf(<<<EOF
 
-        \$mapping = \$this->class->fieldMappings['%2\$s'];
+        \$mapping = \$fieldMappings['%2\$s'];
         \$className = \$mapping['targetDocument'];
-        \$targetClass = \$this->dm->getClassMetadata(\$mapping['targetDocument']);
+        \$targetClass = \$this->getClassMetadata(\$mapping['targetDocument']);
         \$mappedByMapping = \$targetClass->fieldMappings[\$mapping['mappedBy']];
         \$mappedByFieldName = ClassMetadataInfo::getReferenceFieldName(\$mappedByMapping['storeAs'], \$mapping['mappedBy']);
         \$criteria = array_merge(
             array(\$mappedByFieldName => \$data['_id']),
-            isset(\$this->class->fieldMappings['%2\$s']['criteria']) ? \$this->class->fieldMappings['%2\$s']['criteria'] : array()
+            isset(\$fieldMappings['%2\$s']['criteria']) ? \$fieldMappings['%2\$s']['criteria'] : array()
         );
-        \$sort = isset(\$this->class->fieldMappings['%2\$s']['sort']) ? \$this->class->fieldMappings['%2\$s']['sort'] : array();
+        \$sort = isset(\$fieldMappings['%2\$s']['sort']) ? \$fieldMappings['%2\$s']['sort'] : array();
         \$return = \$this->unitOfWork->getDocumentPersister(\$className)->load(\$criteria, null, array(), 0, \$sort);
-        \$this->class->reflFields['%2\$s']->setValue(\$document, \$return);
+        \$reflFields['%2\$s']->setValue(\$document, \$return);
         \$hydratedData['%2\$s'] = \$return;
 
 EOF
@@ -312,14 +314,14 @@ EOF
 
         /** @Many */
         \$mongoData = isset(\$data['%1\$s']) ? \$data['%1\$s'] : null;
-        \$return = \$this->dm->getConfiguration()->getPersistentCollectionFactory()->create(\$this->dm, \$this->class->fieldMappings['%2\$s']);
+        \$return = \$this->dm->getConfiguration()->getPersistentCollectionFactory()->create(\$this->dm, \$fieldMappings['%2\$s']);
         \$return->setHints(\$hints);
-        \$return->setOwner(\$document, \$this->class->fieldMappings['%2\$s']);
+        \$return->setOwner(\$document, \$fieldMappings['%2\$s']);
         \$return->setInitialized(false);
         if (\$mongoData) {
             \$return->setMongoData(\$mongoData);
         }
-        \$this->class->reflFields['%2\$s']->setValue(\$document, \$return);
+        \$reflFields['%2\$s']->setValue(\$document, \$return);
         \$hydratedData['%2\$s'] = \$return;
 
 EOF
@@ -333,11 +335,11 @@ EOF
         /** @EmbedOne */
         if (isset(\$data['%1\$s'])) {
             \$embeddedDocument = \$data['%1\$s'];
-            \$className = \$this->unitOfWork->getClassNameForAssociation(\$this->class->fieldMappings['%2\$s'], \$embeddedDocument);
+            \$className = \$this->unitOfWork->getClassNameForAssociation(\$fieldMappings['%2\$s'], \$embeddedDocument);
             \$embeddedMetadata = \$this->dm->getClassMetadata(\$className);
             \$return = \$embeddedMetadata->newInstance();
 
-            \$this->unitOfWork->setParentAssociation(\$return, \$this->class->fieldMappings['%2\$s'], \$document, '%1\$s');
+            \$this->unitOfWork->setParentAssociation(\$return, \$fieldMappings['%2\$s'], \$document, '%1\$s');
 
             \$embeddedData = \$this->dm->getHydratorFactory()->hydrate(\$return, \$embeddedDocument, \$hints);
             \$embeddedId = \$embeddedMetadata->identifier && isset(\$embeddedData[\$embeddedMetadata->identifier]) ? \$embeddedData[\$embeddedMetadata->identifier] : null;
@@ -346,7 +348,7 @@ EOF
                 \$this->unitOfWork->registerManaged(\$return, \$embeddedId, \$embeddedData);
             }
 
-            \$this->class->reflFields['%2\$s']->setValue(\$document, \$return);
+            \$reflFields['%2\$s']->setValue(\$document, \$return);
             \$hydratedData['%2\$s'] = \$return;
         }
 
@@ -378,18 +380,22 @@ class $hydratorClassName implements HydratorInterface
 {
     private \$dm;
     private \$unitOfWork;
-    private \$class;
+    private \$fieldMappings;
+    private \$reflFields;
 
     public function __construct(DocumentManager \$dm, UnitOfWork \$uow, ClassMetadata \$class)
     {
         \$this->dm = \$dm;
         \$this->unitOfWork = \$uow;
-        \$this->class = \$class;
+        \$this->fieldMappings = new \ArrayObject(\$class->fieldMappings);
+        \$this->reflFields = new \ArrayObject(\$class->reflFields);
     }
 
     public function hydrate(\$document, \$data, array \$hints = array())
     {
         \$hydratedData = array();
+        \$fieldMappings = \$this->fieldMappings;
+        \$reflFields = \$this->reflFields;
 %s        return \$hydratedData;
     }
 }
@@ -430,7 +436,7 @@ EOF
      */
     public function hydrate($document, $data, array $hints = array())
     {
-        $metadata = $this->dm->getClassMetadata(get_class($document));
+        $metadata = $this->getClassMetadata(get_class($document));
         // Invoke preLoad lifecycle events and listeners
         if ( ! empty($metadata->lifecycleCallbacks[Events::preLoad])) {
             $args = array(new PreLoadEventArgs($document, $this->dm, $data));
@@ -480,5 +486,13 @@ EOF
         }
 
         return $data;
+    }
+
+    private function getClassMetadata(string $className): ClassMetadata
+    {
+        if (empty($this->metadataCache[$className])) {
+            $this->metadataCache[$className] = $this->dm->getClassMetadata($className);
+        }
+        return $this->metadataCache[$className];
     }
 }

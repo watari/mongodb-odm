@@ -698,29 +698,23 @@ class DocumentPersister
     private function loadEmbedManyCollection(PersistentCollectionInterface $collection)
     {
         $embeddedDocuments = $collection->getMongoData();
-        $mapping = $collection->getMapping();
-        $owner = $collection->getOwner();
-        $hits = $collection->getHints();
-        $isReadOnly = isset($hits[Query::HINT_READ_ONLY]);
-        $isHash = CollectionHelper::isHash($mapping['strategy']);
         if ($embeddedDocuments) {
-            $medatadaMap = [];
+            $mapping = $collection->getMapping();
+            $owner = $collection->getOwner();
+            $isHash = CollectionHelper::isHash($mapping['strategy']);
             foreach ($embeddedDocuments as $key => $embeddedDocument) {
                 $className = $this->uow->getClassNameForAssociation($mapping, $embeddedDocument);
-                if(!isset($medatadaMap[$className])) {
-                    $medatadaMap[$className] = $this->dm->getClassMetadata($className);
-                }
-                $embeddedMetadata = $medatadaMap[$className];
+                $embeddedMetadata = $this->getClassMetadataByName($className);
                 $embeddedDocumentObject = $embeddedMetadata->newInstance();
 
                 $this->uow->setParentAssociation($embeddedDocumentObject, $mapping, $owner, $mapping['name'] . '.' . $key);
 
-                $data = $this->hydratorFactory->hydrate($embeddedDocumentObject, $embeddedDocument, $hits);
+                $data = $this->hydratorFactory->hydrate($embeddedDocumentObject, $embeddedDocument, $collection->getHints());
                 $id = $embeddedMetadata->identifier && isset($data[$embeddedMetadata->identifier])
                     ? $data[$embeddedMetadata->identifier]
                     : null;
 
-                if (!$isReadOnly) {
+                if (empty($collection->getHints()[Query::HINT_READ_ONLY])) {
                     $this->uow->registerManaged($embeddedDocumentObject, $id, $data);
                 }
                 if ($isHash) {
@@ -743,7 +737,7 @@ class DocumentPersister
         foreach ($collection->getMongoData() as $key => $reference) {
             $className = $this->uow->getClassNameForAssociation($mapping, $reference);
             $mongoId = ClassMetadataInfo::getReferenceId($reference, $mapping['storeAs']);
-            $id = $this->dm->getClassMetadata($className)->getPHPIdentifierValue($mongoId);
+            $id = $this->getClassMetadataByName($className)->getPHPIdentifierValue($mongoId);
 
             // create a reference to the class and id
             $reference = $this->dm->getReference($className, $id);
@@ -763,7 +757,7 @@ class DocumentPersister
             }
         }
         foreach ($groupedIds as $className => $ids) {
-            $class = $this->dm->getClassMetadata($className);
+            $class = $this->getClassMetadataByName($className);
             $mongoCollection = $this->dm->getDocumentCollection($className);
             $criteria = $this->cm->merge(
                 array('_id' => array('$in' => array_values($ids))),
@@ -821,8 +815,8 @@ class DocumentPersister
         $hints = $collection->getHints();
         $mapping = $collection->getMapping();
         $owner = $collection->getOwner();
-        $ownerClass = $this->dm->getClassMetadata(get_class($owner));
-        $targetClass = $this->dm->getClassMetadata($mapping['targetDocument']);
+        $ownerClass = $this->getClassMetadataByName(get_class($owner));
+        $targetClass = $this->getClassMetadataByName($mapping['targetDocument']);
         $mappedByMapping = isset($targetClass->fieldMappings[$mapping['mappedBy']]) ? $targetClass->fieldMappings[$mapping['mappedBy']] : array();
         $mappedByFieldName = ClassMetadataInfo::getReferenceFieldName(isset($mappedByMapping['storeAs']) ? $mappedByMapping['storeAs'] : ClassMetadataInfo::REFERENCE_STORE_AS_DB_REF, $mapping['mappedBy']);
 
@@ -1089,7 +1083,7 @@ class DocumentPersister
             }
 
             // Additional preparation for one or more simple reference values
-            $targetClass = $this->dm->getClassMetadata($mapping['targetDocument']);
+            $targetClass = $this->getClassMetadataByName($mapping['targetDocument']);
 
             if ( ! is_array($value)) {
                 return [[$fieldName, $targetClass->getDatabaseIdentifierValue($value)]];
@@ -1181,7 +1175,7 @@ class DocumentPersister
             return [[$fieldName, $value]];
         }
 
-        $targetClass = $this->dm->getClassMetadata($mapping['targetDocument']);
+        $targetClass = $this->getClassMetadataByName($mapping['targetDocument']);
 
         // No further processing for unmapped targetDocument fields
         if ( ! $targetClass->hasField($objectProperty)) {
@@ -1225,7 +1219,7 @@ class DocumentPersister
         if ($nextObjectProperty) {
             // Respect the targetDocument's class metadata when recursing
             $nextTargetClass = isset($targetMapping['targetDocument'])
-                ? $this->dm->getClassMetadata($targetMapping['targetDocument'])
+                ? $this->getClassMetadataByName($targetMapping['targetDocument'])
                 : null;
 
             if (empty($targetMapping['reference'])) {
@@ -1496,5 +1490,13 @@ class DocumentPersister
                 array_keys($keys)
             );
         }
+    }
+
+    private function getClassMetadataByName(string $className): ClassMetadata
+    {
+        if (empty($this->metadataCache[$className])) {
+            $this->metadataCache[$className] = $this->dm->getClassMetadata($className);
+        }
+        return $this->metadataCache[$className];
     }
 }
