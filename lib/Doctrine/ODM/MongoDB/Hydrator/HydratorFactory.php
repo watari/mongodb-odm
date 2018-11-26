@@ -135,7 +135,7 @@ class HydratorFactory
         }
         $hydratorClassName = str_replace('\\', '', $className) . 'Hydrator';
         $fqn = $this->hydratorNamespace . '\\' . $hydratorClassName;
-        $class = $this->dm->getClassMetadata($className);
+        $class = $this->getClassMetadata($className);
 
         if ( ! class_exists($fqn, false)) {
             $fileName = $this->hydratorDir . DIRECTORY_SEPARATOR . $hydratorClassName . '.php';
@@ -143,19 +143,19 @@ class HydratorFactory
                 case Configuration::AUTOGENERATE_NEVER:
                     require $fileName;
                     break;
-                    
+
                 case Configuration::AUTOGENERATE_ALWAYS:
                     $this->generateHydratorClass($class, $hydratorClassName, $fileName);
                     require $fileName;
                     break;
-                    
+
                 case Configuration::AUTOGENERATE_FILE_NOT_EXISTS:
                     if (!file_exists($fileName)) {
                         $this->generateHydratorClass($class, $hydratorClassName, $fileName);
                     }
                     require $fileName;
                     break;
-                    
+
                 case Configuration::AUTOGENERATE_EVAL:
                     $this->generateHydratorClass($class, $hydratorClassName, false);
                     break;
@@ -259,7 +259,7 @@ EOF
             \$reference = \$data['%1\$s'];
             \$className = \$this->unitOfWork->getClassNameForAssociation(\$fieldMappings['%2\$s'], \$reference);
             \$mongoId = ClassMetadataInfo::getReferenceId(\$reference, \$fieldMappings['%2\$s']['storeAs']);
-            \$targetMetadata = \$this->dm->getClassMetadata(\$className);
+            \$targetMetadata = \$this->getClassMetadata(\$className);
             \$id = \$targetMetadata->getPHPIdentifierValue(\$mongoId);
             \$return = \$this->dm->getReference(\$className, \$id);
             \$reflFields['%2\$s']->setValue(\$document, \$return);
@@ -314,7 +314,7 @@ EOF
 
         /** @Many */
         \$mongoData = isset(\$data['%1\$s']) ? \$data['%1\$s'] : null;
-        \$return = \$this->dm->getConfiguration()->getPersistentCollectionFactory()->create(\$this->dm, \$fieldMappings['%2\$s']);
+        \$return = \$this->persistentCollectionFactory->create(\$this->dm, \$fieldMappings['%2\$s']);
         \$return->setHints(\$hints);
         \$return->setOwner(\$document, \$fieldMappings['%2\$s']);
         \$return->setInitialized(false);
@@ -336,12 +336,12 @@ EOF
         if (isset(\$data['%1\$s'])) {
             \$embeddedDocument = \$data['%1\$s'];
             \$className = \$this->unitOfWork->getClassNameForAssociation(\$fieldMappings['%2\$s'], \$embeddedDocument);
-            \$embeddedMetadata = \$this->dm->getClassMetadata(\$className);
+            \$embeddedMetadata = \$this->getClassMetadata(\$className);
             \$return = \$embeddedMetadata->newInstance();
 
             \$this->unitOfWork->setParentAssociation(\$return, \$fieldMappings['%2\$s'], \$document, '%1\$s');
 
-            \$embeddedData = \$this->dm->getHydratorFactory()->hydrate(\$return, \$embeddedDocument, \$hints);
+            \$embeddedData = \$this->hydratorFactory->hydrate(\$return, \$embeddedDocument, \$hints);
             \$embeddedId = \$embeddedMetadata->identifier && isset(\$embeddedData[\$embeddedMetadata->identifier]) ? \$embeddedData[\$embeddedMetadata->identifier] : null;
 
             if (empty(\$hints[Query::HINT_READ_ONLY])) {
@@ -382,6 +382,9 @@ class $hydratorClassName implements HydratorInterface
     private \$unitOfWork;
     private \$fieldMappings;
     private \$reflFields;
+    private \$metadataCache = [];
+    private \$persistentCollectionFactory;
+    private \$hydratorFactory;
 
     public function __construct(DocumentManager \$dm, UnitOfWork \$uow, ClassMetadata \$class)
     {
@@ -389,6 +392,8 @@ class $hydratorClassName implements HydratorInterface
         \$this->unitOfWork = \$uow;
         \$this->fieldMappings = new \ArrayObject(\$class->fieldMappings);
         \$this->reflFields = new \ArrayObject(\$class->reflFields);
+        \$this->persistentCollectionFactory = \$this->dm->getConfiguration()->getPersistentCollectionFactory();
+        \$this->hydratorFactory = \$this->dm->getHydratorFactory();
     }
 
     public function hydrate(\$document, \$data, array \$hints = array())
@@ -397,6 +402,14 @@ class $hydratorClassName implements HydratorInterface
         \$fieldMappings = \$this->fieldMappings;
         \$reflFields = \$this->reflFields;
 %s        return \$hydratedData;
+    }
+    
+    protected function getClassMetadata(string \$className): ClassMetadata
+    {
+        if (empty(\$this->metadataCache[\$className])) {
+            \$this->metadataCache[\$className] = \$this->dm->getClassMetadata(\$className);
+        }
+        return \$this->metadataCache[\$className];
     }
 }
 EOF

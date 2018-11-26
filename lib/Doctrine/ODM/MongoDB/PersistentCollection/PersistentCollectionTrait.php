@@ -103,6 +103,8 @@ trait PersistentCollectionTrait
      */
     private $hints = array();
 
+    private $metadataCache = [];
+
     /** {@inheritdoc} */
     public function setDocumentManager(DocumentManager $dm)
     {
@@ -316,7 +318,7 @@ trait PersistentCollectionTrait
             case (empty($this->mapping['targetDocument'])):
                 throw new MongoDBException('Specifying targetDocument is required for the ClassMetadata to be obtained.');
             default:
-                return $this->dm->getClassMetadata($this->mapping['targetDocument']);
+                return $this->getClassMetadata($this->mapping['targetDocument']);
         }
     }
 
@@ -780,6 +782,19 @@ trait PersistentCollectionTrait
     private function needsSchedulingForDirtyCheck()
     {
         return $this->owner && $this->dm && ! empty($this->mapping['isOwningSide'])
-            && $this->dm->getClassMetadata(get_class($this->owner))->isChangeTrackingNotify();
+            && $this->getClassMetadata(get_class($this->owner))->isChangeTrackingNotify();
+    }
+
+    /**
+     * @param $className
+     *
+     * @return ClassMetadata
+     */
+    private function getClassMetadata($className)
+    {
+        if (empty($this->metadataCache[$className])) {
+            $this->metadataCache[$className] = $this->dm->getClassMetadata($className);
+        }
+        return $this->metadataCache[$className];
     }
 }
