@@ -134,6 +134,8 @@ class DocumentManager implements ObjectManager
      */
     private $filterCollection;
 
+    private $metadataCache = [];
+
     /**
      * Creates a new Document that operates on the given Mongo connection
      * and uses the given Configuration.
@@ -284,7 +286,14 @@ class DocumentManager implements ObjectManager
      */
     public function getClassMetadata($className)
     {
-        return $this->metadataFactory->getMetadataFor(ltrim($className, '\\'));
+        if (empty($this->metadataCache[$className])) {
+            $trimmedClassName = ltrim($className, '\\');
+            $metadata = $this->metadataFactory->getMetadataFor($trimmedClassName);
+            $this->metadataCache[$className] = $metadata;
+            $this->metadataCache[$trimmedClassName] = $metadata;
+        }
+
+        return $this->metadataCache[$className];
     }
 
     /**
